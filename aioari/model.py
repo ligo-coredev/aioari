@@ -23,11 +23,9 @@ import json
 import inspect
 import asyncio
 
-from concurrent.futures import ThreadPoolExecutor
 from aiohttp.web_exceptions import HTTPNoContent, HTTPNotFound
 
 log = logging.getLogger(__name__)
-_executor = ThreadPoolExecutor()
 
 
 class Repository(object):
@@ -146,10 +144,6 @@ class BaseObject(object):
         self.id = self.id_generator.id_as_str(as_json)
         self.event_reg = event_reg
 
-    async def to_thread(self, func, *args, **kwargs):
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(_executor, lambda: func(*args, **kwargs))
-
     def __repr__(self):
         return "%s(%s)" % (self.__class__.__name__, self.id)
 
@@ -186,7 +180,7 @@ class BaseObject(object):
 
         return enrich_operation
 
-    def on_event(self, event_type, fn, as_task=False, as_thread=False, *args, **kwargs):
+    def on_event(self, event_type, fn, as_task=False, *args, **kwargs):
         """Register event callbacks for this specific domain object.
 
         :param event_type: Type of event to register for.
@@ -212,14 +206,12 @@ class BaseObject(object):
                     if fn:
                         res = fn(objects, event, *args, **kwargs)
             # The callback may or may not be an async function
-            if inspect.iscoroutine(res):
-                if as_task:
-                    asyncio.create_task(res)
-                elif as_thread:
-                    await self.to_thread(res)
-                else:
-                    await res
+            if inspect.iscoroutine(res) and as_task:
+                asyncio.create_task(res)
+            elif inspect.iscoroutine(res) and not as_task:
+                await res
             return res
+
 
         if not self.event_reg:
             msg = "Event callback registration called on object with no events"

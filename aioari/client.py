@@ -10,13 +10,12 @@ import urllib
 import aiohttp
 import aioswagger11.client
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+
 from aioari.model import Repository
 from aioari.model import Channel, Bridge, Playback, LiveRecording, StoredRecording, Endpoint, DeviceState, Sound
 
 import logging
 log = logging.getLogger(__name__)
-_executor = ThreadPoolExecutor()
 
 
 class Client(object):
@@ -34,10 +33,6 @@ class Client(object):
         url = urllib.parse.urljoin(base_url, "ari/api-docs/resources.json")
         self.swagger = aioswagger11.client.SwaggerClient(
             http_client=http_client, url=url)
-
-    async def to_thread(self, func, *args, **kwargs):
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(_executor, lambda: func(*args, **kwargs))
 
     async def init(self, RepositoryFactory=Repository):
         await self.swagger.init()
@@ -174,7 +169,7 @@ class Client(object):
         for listener in listeners:
             # noinspection PyBroadException
             try:
-                callback, event_obj, args, kwargs, as_task, as_thread = listener
+                callback, event_obj, args, kwargs, as_task = listener
                 log.debug("cb_type=%s" % type(callback))
                 args = args or ()
                 kwargs = kwargs or {}
@@ -183,8 +178,6 @@ class Client(object):
                 if hasattr(cb,'__await__'):
                     if as_task:
                         asyncio.create_task(cb)
-                    elif as_thread:
-                        await self.to_thread(cb)
                     else:
                         await cb
 
@@ -226,7 +219,7 @@ class Client(object):
             await self.__run(ws)
 
 
-    def on_event(self, event_type, event_cb, event_obj=None, as_task=False, as_thread=False, *args, **kwargs):
+    def on_event(self, event_type, event_cb, event_obj=None, as_task=False, *args, **kwargs):
         """Register callback for events with given type.
 
         :param event_type: String name of the event to register for.
@@ -239,7 +232,7 @@ class Client(object):
         for cb in listeners:
             if event_cb == cb[0]:
                 listeners.remove(cb)
-        callback_obj = (event_cb, event_obj, args, kwargs, as_task, as_thread)
+        callback_obj = (event_cb, event_obj, args, kwargs, as_task)
         log.debug("event_cb=%s" % event_cb)
         listeners.append(callback_obj)
         client = self
@@ -256,7 +249,7 @@ class Client(object):
 
         return EventUnsubscriber()
 
-    def on_object_event(self, event_type, event_cb, factory_fn, model_id, as_task=False, as_thread=False,
+    def on_object_event(self, event_type, event_cb, factory_fn, model_id, as_task=False,
                         *args, **kwargs):
         """Register callback for events with the given type. Event fields of
         the given model_id type are passed along to event_cb.
@@ -306,13 +299,11 @@ class Client(object):
                     obj = None
             return event_cb(obj, event, *args, **kwargs)
 
-        return self.on_event(event_type, extract_objects, 
-                             as_task=as_task, 
-                             as_thread=as_thread,
+        return self.on_event(event_type, extract_objects, as_task=as_task,
                              *args,
                              **kwargs)
 
-    def on_channel_event(self, event_type, fn, as_task=False, as_thread=False, *args, **kwargs):
+    def on_channel_event(self, event_type, fn, as_task=False, *args, **kwargs):
         """Register callback for Channel related events
 
         :param event_type: String name of the event to register for.
@@ -322,7 +313,7 @@ class Client(object):
         :param kwargs: Keyword arguments to pass to fn
         """
         return self.on_object_event(event_type, fn, Channel, 'Channel',
-                                    as_task=as_task, as_thread=as_thread, *args, **kwargs)
+                                    as_task=as_task, *args, **kwargs)
 
     def on_bridge_event(self, event_type, fn, *args, **kwargs):
         """Register callback for Bridge related events
