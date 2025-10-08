@@ -165,6 +165,10 @@ class Client(object):
     async def process_ws(self, msg):
         """Process one incoming websocket message"""
 
+        if msg['type'] == "RecordingFinished":
+            print(f"WS Message: {msg}")
+            log.debug(f"WS Message: {msg}")
+
         listeners = list(self.event_listeners.get(msg['type'], [])) \
                     + list(self.event_listeners.get('*', []))
         for listener in listeners:
